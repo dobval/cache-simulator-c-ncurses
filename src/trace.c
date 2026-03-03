@@ -9,20 +9,18 @@
 
 const char *trace_type_name(TraceType type) {
     switch (type) {
-        case TRACE_SEQUENTIAL:   return "Sequential";
-        case TRACE_RANDOM:       return "Random";
         case TRACE_LOOP:         return "Loop";
-        case TRACE_STRIDED:      return "Strided";
+        case TRACE_RANDOM:       return "Random";
+        case TRACE_SEQUENTIAL:   return "Sequential";
         default:                 return "Unknown";
     }
 }
 
 const char *trace_type_desc(TraceType type) {
     switch (type) {
-        case TRACE_SEQUENTIAL:   return "Streaming access (0, 64, 128...)";
+        case TRACE_LOOP:         return "Repeated same lines";
         case TRACE_RANDOM:       return "Random addresses";
-        case TRACE_LOOP:        return "Repeated same lines";
-        case TRACE_STRIDED:      return "Fixed stride pattern";
+        case TRACE_SEQUENTIAL:   return "Streaming access (0, 64, 128...)";
         default:                  return "";
     }
 }
@@ -68,11 +66,6 @@ bool trace_gen_next(TraceGenerator *gen, TraceEntry *entry) {
             entry->type = (idx % 3 == 0) ? 'S' : 'L';
             break;
         }
-
-        case TRACE_STRIDED:
-            addr = gen->base_address + (idx * gen->stride);
-            entry->type = (idx % 5 == 0) ? 'S' : 'L';
-            break;
 
         default:
             addr = gen->base_address;

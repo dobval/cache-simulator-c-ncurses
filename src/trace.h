@@ -7,10 +7,9 @@
 #include <stdint.h>
 
 typedef enum {
-    TRACE_SEQUENTIAL,
-    TRACE_RANDOM,
     TRACE_LOOP,
-    TRACE_STRIDED,
+    TRACE_RANDOM,
+    TRACE_SEQUENTIAL,
     TRACE_NUM
 } TraceType;
 

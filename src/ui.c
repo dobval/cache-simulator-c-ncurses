@@ -56,9 +56,9 @@ void ui_init(UIState *ui) {
     ui->l1_policy_idx = 0;
     ui->write_policy_idx = 0;
     
-    ui->trace_type = TRACE_SEQUENTIAL;
+    ui->trace_type = TRACE_LOOP;
     ui->trace_access_count = 1000;
-    ui->trace_stride = 64;
+    ui->trace_stride = 4;
     
     ui->mode = MODE_CONFIG;
     
@@ -90,7 +90,7 @@ static void draw_config_panel(UIState *ui) {
     
     mvwprintw(win, 8, 2, "Trace Pattern:");
     for (int i = 0; i < TRACE_NUM; i++) {
-        if (i == ui->trace_type) {
+        if ((TraceType)i == ui->trace_type) {
             wattron(win, A_REVERSE);
             mvwprintw(win, 9 + i, 4, " %c %s", '1' + i, trace_type_name(i));
             wattroff(win, A_REVERSE);
@@ -100,9 +100,9 @@ static void draw_config_panel(UIState *ui) {
     }
     
     mvwprintw(win, 15, 2, "Accesses: [%5d]", ui->trace_access_count);
-    mvwprintw(win, 16, 2, "Stride:   [%5d]", ui->trace_stride);
+    mvwprintw(win, 16, 2, "Stride (for Sequential):   [%5d]", ui->trace_stride);
     
-    mvwprintw(win, 18, 2, "[ENTER] Run  |  +/- to adjust  |  1-4 select trace");
+    mvwprintw(win, 18, 2, "[ENTER] Run  |  +/- to adjust  |  1-3 select trace  |  Q quit");
     
     if (ui->mode == MODE_CONFIG && ui->selected_field >= 0) {
         int highlight_row = 0;
@@ -153,7 +153,7 @@ static void draw_stats_panel(UIState *ui, CacheSystem *sys) {
     mvwprintw(win, 3, 20, "Memory Reads: %llu", (unsigned long long)stats->memory_reads);
     mvwprintw(win, 3, 45, "Writes: %llu", (unsigned long long)stats->memory_writes);
     
-    mvwprintw(win, 5, 2, "[ENTER] Back to config");
+    mvwprintw(win, 5, 2, "[ENTER] Back to config  |  Q quit");
     
     wnoutrefresh(win);
 }
@@ -217,7 +217,7 @@ void ui_handle_input(UIState *ui, CacheSystem *sys, int ch) {
         return;
     }
     
-    if (ch >= '1' && ch <= '4') {
+    if (ch >= '1' && ch <= '3') {
         int trace_idx = ch - '1';
         if (trace_idx < TRACE_NUM) {
             ui->trace_type = (TraceType)trace_idx;
@@ -237,29 +237,73 @@ void ui_handle_input(UIState *ui, CacheSystem *sys, int ch) {
         case '+':
         case KEY_RIGHT:
             switch (ui->selected_field) {
-                case 0: ui->l1_sets = ui->l1_sets * 2; if (ui->l1_sets > 256) ui->l1_sets = 256; break;
-                case 1: ui->l1_assoc = ui->l1_assoc * 2; if (ui->l1_assoc > 16) ui->l1_assoc = 16; break;
-                case 2: ui->l1_block = ui->l1_block * 2; if (ui->l1_block > 128) ui->l1_block = 128; break;
-                case 3: ui->l1_policy_idx = (ui->l1_policy_idx + 1) % NUM_POLICIES; break;
-                case 4: ui->write_policy_idx = (ui->write_policy_idx + 1) % NUM_WRITE_POLICIES; break;
-                case 6: ui->trace_access_count = ui->trace_access_count * 2; 
-                        if (ui->trace_access_count > 10000) ui->trace_access_count = 10000; break;
-                case 7: ui->trace_stride = ui->trace_stride * 2; 
-                        if (ui->trace_stride > 1024) ui->trace_stride = 1024; break;
+                case 0: {
+                    ui->l1_sets = ui->l1_sets * 2;
+                    if (ui->l1_sets > 256) ui->l1_sets = 256;
+                    break;
+                }
+                case 1: {
+                    ui->l1_assoc = ui->l1_assoc * 2;
+                    if (ui->l1_assoc > 16) ui->l1_assoc = 16;
+                    break;
+                }
+                case 2: {
+                    ui->l1_block = ui->l1_block * 2;
+                    if (ui->l1_block > 128) ui->l1_block = 128;
+                    break;
+                }
+                case 3:
+                    ui->l1_policy_idx = (ui->l1_policy_idx + 1) % NUM_POLICIES;
+                    break;
+                case 4:
+                    ui->write_policy_idx = (ui->write_policy_idx + 1) % NUM_WRITE_POLICIES;
+                    break;
+                case 6: {
+                    ui->trace_access_count = ui->trace_access_count * 2;
+                    if (ui->trace_access_count > 10000) ui->trace_access_count = 10000;
+                    break;
+                }
+                case 7: {
+                    ui->trace_stride = ui->trace_stride * 2;
+                    if (ui->trace_stride > 1024) ui->trace_stride = 1024;
+                    break;
+                }
             }
             break;
         case '-':
         case KEY_LEFT:
             switch (ui->selected_field) {
-                case 0: ui->l1_sets = ui->l1_sets / 2; if (ui->l1_sets < 1) ui->l1_sets = 1; break;
-                case 1: ui->l1_assoc = ui->l1_assoc / 2; if (ui->l1_assoc < 1) ui->l1_assoc = 1; break;
-                case 2: ui->l1_block = ui->l1_block / 2; if (ui->l1_block < 4) ui->l1_block = 4; break;
-                case 3: ui->l1_policy_idx = (ui->l1_policy_idx - 1 + NUM_POLICIES) % NUM_POLICIES; break;
-                case 4: ui->write_policy_idx = (ui->write_policy_idx - 1 + NUM_WRITE_POLICIES) % NUM_WRITE_POLICIES; break;
-                case 6: ui->trace_access_count = ui->trace_access_count / 2; 
-                        if (ui->trace_access_count < 100) ui->trace_access_count = 100; break;
-                case 7: ui->trace_stride = ui->trace_stride / 2; 
-                        if (ui->trace_stride < 4) ui->trace_stride = 4; break;
+                case 0: {
+                    ui->l1_sets = ui->l1_sets / 2;
+                    if (ui->l1_sets < 1) ui->l1_sets = 1;
+                    break;
+                }
+                case 1: {
+                    ui->l1_assoc = ui->l1_assoc / 2;
+                    if (ui->l1_assoc < 1) ui->l1_assoc = 1;
+                    break;
+                }
+                case 2: {
+                    ui->l1_block = ui->l1_block / 2;
+                    if (ui->l1_block < 4) ui->l1_block = 4;
+                    break;
+                }
+                case 3:
+                    ui->l1_policy_idx = (ui->l1_policy_idx - 1 + NUM_POLICIES) % NUM_POLICIES;
+                    break;
+                case 4:
+                    ui->write_policy_idx = (ui->write_policy_idx - 1 + NUM_WRITE_POLICIES) % NUM_WRITE_POLICIES;
+                    break;
+                case 6: {
+                    ui->trace_access_count = ui->trace_access_count / 2;
+                    if (ui->trace_access_count < 100) ui->trace_access_count = 100;
+                    break;
+                }
+                case 7: {
+                    ui->trace_stride = ui->trace_stride / 2;
+                    if (ui->trace_stride < 4) ui->trace_stride = 4;
+                    break;
+                }
             }
             break;
         case '\n':
