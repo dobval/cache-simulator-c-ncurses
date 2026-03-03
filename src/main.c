@@ -1,14 +1,11 @@
 #include "cache.h"
 #include "ui.h"
-#include <stdio.h>
-#include <stdlib.h>
 #include <ncurses.h>
-#include <time.h>
 
 int main(void) {
     CacheSystem cache_sys;
     
-    cache_system_init(&cache_sys, 32, 4, 64, 128, 8, 64,
+    cache_system_init(&cache_sys, 32, 4, 64, 0, 0, 0,
                       POLICY_LRU, POLICY_LRU, WRITE_BACK, false);
     
     UIState ui;
@@ -24,7 +21,7 @@ int main(void) {
         if (ch != ERR) {
             ui_handle_input(&ui, &cache_sys, ch);
             
-            if (ch == 'q' || ch == 'Q' || ch == KEY_F(10)) {
+            if (ch == 'q' || ch == 'Q') {
                 running = 0;
             }
             
