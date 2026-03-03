@@ -28,146 +28,117 @@ typedef struct {
 
 static void print_usage(const char *prog) {
     printf("Usage: %s [options]\n", prog);
-    printf("       %s --sets N --assoc N --block N --trace T --count N\n\n", prog);
     printf("Options:\n");
-    printf("  --help              Show this help message\n");
-    printf("  --l1-sets N         L1 cache sets (default: 32)\n");
-    printf("  --l1-assoc N        L1 cache associativity (default: 4)\n");
-    printf("  --l1-block N        L1 cache block size (default: 64)\n");
-    printf("  --l1-policy P       L1 eviction policy: LRU, FIFO, LFU, RANDOM (default: LRU)\n");
-    printf("  --write-policy P    Write policy: WT, WB (default: WB)\n");
-    printf("  --enable-l2         Enable L2 cache\n");
-    printf("  --l2-sets N         L2 cache sets (default: 128)\n");
-    printf("  --l2-assoc N        L2 cache associativity (default: 8)\n");
-    printf("  --l2-block N        L2 cache block size (default: 64)\n");
-    printf("  --l2-policy P       L2 eviction policy: LRU, FIFO, LFU, RANDOM (default: LRU)\n");
-    printf("  --trace T           Trace type: loop, random, sequential (default: loop)\n");
-    printf("  --count N           Number of memory accesses (default: 1000)\n");
-    printf("  --stride N          Stride for sequential trace (default: 4)\n");
-    printf("\nWithout options, runs in interactive UI mode.\n");
+    printf("  --l1-sets N        L1 sets (default: 32)\n");
+    printf("  --l1-assoc N       L1 associativity (default: 4)\n");
+    printf("  --l1-block N       L1 block size (default: 64)\n");
+    printf("  --l1-policy P      L1 policy: LRU, FIFO, LFU, RANDOM\n");
+    printf("  --write-policy P   Write policy: WT, WB\n");
+    printf("  --enable-l2        Enable L2 cache\n");
+    printf("  --l2-sets N        L2 sets (default: 128)\n");
+    printf("  --l2-assoc N       L2 associativity (default: 8)\n");
+    printf("  --l2-block N       L2 block size (default: 64)\n");
+    printf("  --l2-policy P      L2 policy: LRU, FIFO, LFU, RANDOM\n");
+    printf("  --trace T          Trace: loop, random, sequential\n");
+    printf("  --count N          Accesses (default: 1000)\n");
+    printf("  --stride N         Stride (default: 4)\n");
+    printf("\nNo args = interactive UI mode.\n");
 }
 
-static EvictionPolicy parse_policy(const char *str) {
-    if (strcmp(str, "LRU") == 0) return POLICY_LRU;
-    if (strcmp(str, "FIFO") == 0) return POLICY_FIFO;
-    if (strcmp(str, "LFU") == 0) return POLICY_LFU;
-    if (strcmp(str, "RANDOM") == 0) return POLICY_RANDOM;
-    return POLICY_LRU;
+static EvictionPolicy parse_policy(const char *s) {
+    if (strcmp(s, "LRU") == 0) return POLICY_LRU;
+    if (strcmp(s, "FIFO") == 0) return POLICY_FIFO;
+    if (strcmp(s, "LFU") == 0) return POLICY_LFU;
+    return POLICY_RANDOM;
 }
 
-static WritePolicy parse_write_policy(const char *str) {
-    if (strcmp(str, "WT") == 0) return WRITE_THROUGH;
-    if (strcmp(str, "WB") == 0) return WRITE_BACK;
-    return WRITE_BACK;
+static WritePolicy parse_wp(const char *s) {
+    return (strcmp(s, "WT") == 0) ? WRITE_THROUGH : WRITE_BACK;
 }
 
-static TraceType parse_trace(const char *str) {
-    if (strcmp(str, "loop") == 0) return TRACE_LOOP;
-    if (strcmp(str, "random") == 0) return TRACE_RANDOM;
-    if (strcmp(str, "sequential") == 0) return TRACE_SEQUENTIAL;
-    return TRACE_LOOP;
+static TraceType parse_trace(const char *s) {
+    if (strcmp(s, "loop") == 0) return TRACE_LOOP;
+    if (strcmp(s, "random") == 0) return TRACE_RANDOM;
+    return TRACE_SEQUENTIAL;
 }
 
-static int parse_int(const char *arg, const char *val, int *out) {
-    char *endptr;
-    long num = strtol(val, &endptr, 10);
-    if (*endptr != '\0' || num < 1 || num > 65536) {
-        fprintf(stderr, "Invalid value for %s: %s\n", arg, val);
-        return 0;
-    }
-    *out = (int)num;
-    return 1;
-}
+typedef struct { int *var; int min, max; } IntOpt;
+typedef struct { int *var; } FlagOpt;
+typedef struct { EvictionPolicy *var; } PolicyOpt;
+typedef struct { WritePolicy *var; } WpOpt;
+typedef struct { TraceType *var; } TraceOpt;
+
+typedef enum { INT, FLAG, POLICY, WP, TRACE } OptType;
+
+typedef struct {
+    const char *name;
+    OptType type;
+    union { IntOpt i; FlagOpt f; PolicyOpt p; WpOpt w; TraceOpt t; } u;
+} Option;
 
 static CLIArgs parse_args(int argc, char *argv[]) {
-    CLIArgs args = {
-        .l1_sets = 32,
-        .l1_assoc = 4,
-        .l1_block = 64,
-        .l1_policy = POLICY_LRU,
-        .write_policy = WRITE_BACK,
-        .l2_sets = 128,
-        .l2_assoc = 8,
-        .l2_block = 64,
-        .l2_policy = POLICY_LRU,
-        .enable_l2 = 0,
-        .trace_type = TRACE_LOOP,
-        .trace_count = 1000,
-        .trace_stride = 4,
-        .cli_mode = 0
+    CLIArgs a = {
+        .l1_sets = 32, .l1_assoc = 4, .l1_block = 64,
+        .l1_policy = POLICY_LRU, .write_policy = WRITE_BACK,
+        .l2_sets = 128, .l2_assoc = 8, .l2_block = 64,
+        .l2_policy = POLICY_LRU, .enable_l2 = 0,
+        .trace_type = TRACE_LOOP, .trace_count = 1000, .trace_stride = 4
     };
-    
+
+    Option opts[] = {
+        {"--l1-sets",    INT,  {.i = {&a.l1_sets, 1, 256}}},
+        {"--l1-assoc",   INT,  {.i = {&a.l1_assoc, 1, 16}}},
+        {"--l1-block",   INT,  {.i = {&a.l1_block, 4, 128}}},
+        {"--l1-policy",  POLICY, {.p = {&a.l1_policy}}},
+        {"--write-policy", WP, {.w = {&a.write_policy}}},
+        {"--enable-l2",  FLAG, {.f = {&a.enable_l2}}},
+        {"--l2-sets",    INT,  {.i = {&a.l2_sets, 1, 256}}},
+        {"--l2-assoc",   INT,  {.i = {&a.l2_assoc, 1, 16}}},
+        {"--l2-block",   INT,  {.i = {&a.l2_block, 4, 128}}},
+        {"--l2-policy",  POLICY, {.p = {&a.l2_policy}}},
+        {"--trace",      TRACE, {.t = {&a.trace_type}}},
+        {"--count",      INT,  {.i = {&a.trace_count, 100, 10000}}},
+        {"--stride",     INT,  {.i = {&a.trace_stride, 4, 1024}}},
+    };
+
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             print_usage(argv[0]);
             exit(0);
         }
-        
-        char *next_arg = (i + 1 < argc) ? argv[i + 1] : NULL;
-        
-        if (strcmp(argv[i], "--l1-sets") == 0) {
-            if (!next_arg || !parse_int(argv[i], next_arg, &args.l1_sets)) exit(1);
-            i++;
+
+        int matched = 0;
+        for (size_t j = 0; j < sizeof(opts)/sizeof(opts[0]); j++) {
+            if (strcmp(argv[i], opts[j].name) == 0) {
+                matched = 1;
+                switch (opts[j].type) {
+                    case INT: {
+                        if (i + 1 >= argc) { fprintf(stderr, "Missing value\n"); exit(1); }
+                        long n = strtol(argv[++i], NULL, 10);
+                        if (n < opts[j].u.i.min || n > opts[j].u.i.max) exit(1);
+                        *opts[j].u.i.var = (int)n;
+                        break;
+                    }
+                    case FLAG: *opts[j].u.f.var = 1; break;
+                    case POLICY:
+                        if (i + 1 >= argc) { fprintf(stderr, "Missing value\n"); exit(1); }
+                        *opts[j].u.p.var = parse_policy(argv[++i]);
+                        break;
+                    case WP:
+                        if (i + 1 >= argc) { fprintf(stderr, "Missing value\n"); exit(1); }
+                        *opts[j].u.w.var = parse_wp(argv[++i]);
+                        break;
+                    case TRACE:
+                        if (i + 1 >= argc) { fprintf(stderr, "Missing value\n"); exit(1); }
+                        *opts[j].u.t.var = parse_trace(argv[++i]);
+                        break;
+                }
+                break;
+            }
         }
-        else if (strcmp(argv[i], "--l1-assoc") == 0) {
-            if (!next_arg || !parse_int(argv[i], next_arg, &args.l1_assoc)) exit(1);
-            i++;
-        }
-        else if (strcmp(argv[i], "--l1-block") == 0) {
-            if (!next_arg || !parse_int(argv[i], next_arg, &args.l1_block)) exit(1);
-            i++;
-        }
-        else if (strcmp(argv[i], "--l1-policy") == 0) {
-            if (!next_arg) { fprintf(stderr, "Missing value for %s\n", argv[i]); exit(1); }
-            args.l1_policy = parse_policy(next_arg);
-            i++;
-        }
-        else if (strcmp(argv[i], "--write-policy") == 0) {
-            if (!next_arg) { fprintf(stderr, "Missing value for %s\n", argv[i]); exit(1); }
-            args.write_policy = parse_write_policy(next_arg);
-            i++;
-        }
-        else if (strcmp(argv[i], "--enable-l2") == 0) {
-            args.enable_l2 = 1;
-        }
-        else if (strcmp(argv[i], "--l2-sets") == 0) {
-            if (!next_arg || !parse_int(argv[i], next_arg, &args.l2_sets)) exit(1);
-            i++;
-        }
-        else if (strcmp(argv[i], "--l2-assoc") == 0) {
-            if (!next_arg || !parse_int(argv[i], next_arg, &args.l2_assoc)) exit(1);
-            i++;
-        }
-        else if (strcmp(argv[i], "--l2-block") == 0) {
-            if (!next_arg || !parse_int(argv[i], next_arg, &args.l2_block)) exit(1);
-            i++;
-        }
-        else if (strcmp(argv[i], "--l2-policy") == 0) {
-            if (!next_arg) { fprintf(stderr, "Missing value for %s\n", argv[i]); exit(1); }
-            args.l2_policy = parse_policy(next_arg);
-            i++;
-        }
-        else if (strcmp(argv[i], "--trace") == 0) {
-            if (!next_arg) { fprintf(stderr, "Missing value for %s\n", argv[i]); exit(1); }
-            args.trace_type = parse_trace(next_arg);
-            i++;
-        }
-        else if (strcmp(argv[i], "--count") == 0) {
-            if (!next_arg || !parse_int(argv[i], next_arg, &args.trace_count)) exit(1);
-            i++;
-        }
-        else if (strcmp(argv[i], "--stride") == 0) {
-            if (!next_arg || !parse_int(argv[i], next_arg, &args.trace_stride)) exit(1);
-            i++;
-        }
-        else {
-            fprintf(stderr, "Unknown option: %s\n", argv[i]);
-            exit(1);
-        }
+        if (!matched) { fprintf(stderr, "Unknown: %s\n", argv[i]); exit(1); }
     }
-    
-    args.cli_mode = 1;
-    return args;
+    return a;
 }
 
 static void run_cli_simulation(CLIArgs *args) {

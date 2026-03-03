@@ -78,45 +78,49 @@ uint32_t cache_get_block_offset(Cache *cache, uint32_t address) {
     return address & mask;
 }
 
-static int find_eviction_line(Cache *cache, int set_idx) {
-    int evict_idx = 0;
-    uint32_t min_value = cache->lines[set_idx][0].lru_counter;
-    
+static uint32_t get_counter(Cache *cache, CacheLine *line) {
     switch (cache->policy) {
-        case POLICY_LRU:
-            for (int i = 1; i < cache->associativity; i++) {
-                if (cache->lines[set_idx][i].lru_counter < min_value) {
-                    min_value = cache->lines[set_idx][i].lru_counter;
-                    evict_idx = i;
-                }
-            }
-            break;
-            
-        case POLICY_FIFO:
-            min_value = cache->lines[set_idx][0].fifo_counter;
-            for (int i = 1; i < cache->associativity; i++) {
-                if (cache->lines[set_idx][i].fifo_counter < min_value) {
-                    min_value = cache->lines[set_idx][i].fifo_counter;
-                    evict_idx = i;
-                }
-            }
-            break;
-            
-        case POLICY_LFU:
-            min_value = cache->lines[set_idx][0].freq_counter;
-            for (int i = 1; i < cache->associativity; i++) {
-                if (cache->lines[set_idx][i].freq_counter < min_value) {
-                    min_value = cache->lines[set_idx][i].freq_counter;
-                    evict_idx = i;
-                }
-            }
-            break;
-            
-        case POLICY_RANDOM:
-            evict_idx = rand() % cache->associativity;
-            break;
+        case POLICY_LRU:   return line->lru_counter;
+        case POLICY_FIFO:  return line->fifo_counter;
+        case POLICY_LFU:   return line->freq_counter;
+        case POLICY_RANDOM: return 0;
+    }
+    return 0;
+}
+
+static void set_counter(Cache *cache, CacheLine *line, uint32_t value) {
+    switch (cache->policy) {
+        case POLICY_LRU:   line->lru_counter = value; break;
+        case POLICY_FIFO:  line->fifo_counter = value; break;
+        case POLICY_LFU:   line->freq_counter = value; break;
+        case POLICY_RANDOM: break;
+    }
+}
+
+static void increment_counter(Cache *cache, CacheLine *line) {
+    switch (cache->policy) {
+        case POLICY_LRU:   line->lru_counter = cache->global_counter++; break;
+        case POLICY_LFU:   line->freq_counter++; break;
+        case POLICY_FIFO:   break;
+        case POLICY_RANDOM: break;
+    }
+}
+
+static int find_eviction_line(Cache *cache, int set_idx) {
+    if (cache->policy == POLICY_RANDOM) {
+        return rand() % cache->associativity;
     }
     
+    int evict_idx = 0;
+    uint32_t min_value = get_counter(cache, &cache->lines[set_idx][0]);
+    
+    for (int i = 1; i < cache->associativity; i++) {
+        uint32_t val = get_counter(cache, &cache->lines[set_idx][i]);
+        if (val < min_value) {
+            min_value = val;
+            evict_idx = i;
+        }
+    }
     return evict_idx;
 }
 
@@ -152,18 +156,7 @@ AccessResult cache_access(Cache *cache, uint32_t address, AccessType type,
                 }
             }
             
-            switch (cache->policy) {
-                case POLICY_LRU:
-                    cache->lines[set_idx][i].lru_counter = cache->global_counter++;
-                    break;
-                case POLICY_FIFO:
-                    break;
-                case POLICY_LFU:
-                    cache->lines[set_idx][i].freq_counter++;
-                    break;
-                case POLICY_RANDOM:
-                    break;
-            }
+            increment_counter(cache, &cache->lines[set_idx][i]);
             
             stats->hits++;
             return RESULT_HIT;
@@ -189,19 +182,7 @@ AccessResult cache_access(Cache *cache, uint32_t address, AccessType type,
     cache->lines[set_idx][line_idx].tag = tag;
     cache->lines[set_idx][line_idx].dirty = 0;
     
-    switch (cache->policy) {
-        case POLICY_LRU:
-            cache->lines[set_idx][line_idx].lru_counter = cache->global_counter++;
-            break;
-        case POLICY_FIFO:
-            cache->lines[set_idx][line_idx].fifo_counter = cache->global_counter++;
-            break;
-        case POLICY_LFU:
-            cache->lines[set_idx][line_idx].freq_counter = 1;
-            break;
-        case POLICY_RANDOM:
-            break;
-    }
+    set_counter(cache, &cache->lines[set_idx][line_idx], cache->global_counter++);
     
     if (type == ACCESS_STORE) {
         if (cache->write_policy == WRITE_BACK) {

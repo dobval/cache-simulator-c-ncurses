@@ -8,6 +8,32 @@ static const int NUM_POLICIES = 4;
 static const char *WRITE_POLICY_OPTIONS[] = {"Write-Through", "Write-Back"};
 static const int NUM_WRITE_POLICIES = 2;
 
+static int adjust_pow2(int value, int dir, int min, int max) {
+    if (dir > 0) return (value < max) ? value * 2 : max;
+    return (value > min) ? value / 2 : min;
+}
+
+static int wrap_index(int idx, int dir, int count) {
+    return (idx + dir + count) % count;
+}
+
+static void adjust_field(UIState *ui, int direction) {
+    switch (ui->selected_field) {
+        case 0: ui->l1_sets = adjust_pow2(ui->l1_sets, direction, 1, 256); break;
+        case 1: ui->l1_assoc = adjust_pow2(ui->l1_assoc, direction, 1, 16); break;
+        case 2: ui->l1_block = adjust_pow2(ui->l1_block, direction, 4, 128); break;
+        case 3: ui->l1_policy_idx = wrap_index(ui->l1_policy_idx, direction, NUM_POLICIES); break;
+        case 4: ui->write_policy_idx = wrap_index(ui->write_policy_idx, direction, NUM_WRITE_POLICIES); break;
+        case 5: ui->enable_l2 = !ui->enable_l2; break;
+        case 6: ui->l2_sets = adjust_pow2(ui->l2_sets, direction, 1, 256); break;
+        case 7: ui->l2_assoc = adjust_pow2(ui->l2_assoc, direction, 1, 16); break;
+        case 8: ui->l2_block = adjust_pow2(ui->l2_block, direction, 4, 128); break;
+        case 9: ui->l2_policy_idx = wrap_index(ui->l2_policy_idx, direction, NUM_POLICIES); break;
+        case 11: ui->trace_access_count = adjust_pow2(ui->trace_access_count, direction, 100, 10000); break;
+        case 12: ui->trace_stride = adjust_pow2(ui->trace_stride, direction, 4, 1024); break;
+    }
+}
+
 #define CONFIG_WIN_H   27
 #define CONFIG_WIN_Y   2
 #define CONFIG_WIN_X   2
@@ -115,7 +141,7 @@ static void draw_config_panel(UIState *ui) {
     mvwprintw(win, 20, 2, "Accesses:                [%5d]", ui->trace_access_count);
     mvwprintw(win, 21, 2, "Stride (for Sequential): [%5d]", ui->trace_stride);
     
-    mvwprintw(win, 25, 2, "[ENTER] Run  |  + - / < > adjust values  |  1-3 select trace  |  Q quit");
+    mvwprintw(win, 25, 2, "[ENTER] Run  |  [+ -] / [< >] adjust values  |  1-3 select trace  |  Q quit");
     
     if (ui->mode == MODE_CONFIG && ui->selected_field >= 0) {
         int highlight_row = 0;
@@ -272,126 +298,18 @@ void ui_handle_input(UIState *ui, CacheSystem *sys, int ch) {
     
     switch (ch) {
         case KEY_UP:
-            ui->selected_field--;
-            if (ui->selected_field < 0) ui->selected_field = 12;
+            ui->selected_field = (ui->selected_field > 0) ? ui->selected_field - 1 : 12;
             break;
         case KEY_DOWN:
-            ui->selected_field++;
-            if (ui->selected_field > 12) ui->selected_field = 0;
+            ui->selected_field = (ui->selected_field < 12) ? ui->selected_field + 1 : 0;
             break;
         case '+':
         case KEY_RIGHT:
-            switch (ui->selected_field) {
-                case 0: {
-                    ui->l1_sets = ui->l1_sets * 2;
-                    if (ui->l1_sets > 256) ui->l1_sets = 256;
-                    break;
-                }
-                case 1: {
-                    ui->l1_assoc = ui->l1_assoc * 2;
-                    if (ui->l1_assoc > 16) ui->l1_assoc = 16;
-                    break;
-                }
-                case 2: {
-                    ui->l1_block = ui->l1_block * 2;
-                    if (ui->l1_block > 128) ui->l1_block = 128;
-                    break;
-                }
-                case 3:
-                    ui->l1_policy_idx = (ui->l1_policy_idx + 1) % NUM_POLICIES;
-                    break;
-                case 4:
-                    ui->write_policy_idx = (ui->write_policy_idx + 1) % NUM_WRITE_POLICIES;
-                    break;
-                case 5:
-                    ui->enable_l2 = !ui->enable_l2;
-                    break;
-                case 6: {
-                    ui->l2_sets = ui->l2_sets * 2;
-                    if (ui->l2_sets > 256) ui->l2_sets = 256;
-                    break;
-                }
-                case 7: {
-                    ui->l2_assoc = ui->l2_assoc * 2;
-                    if (ui->l2_assoc > 16) ui->l2_assoc = 16;
-                    break;
-                }
-                case 8: {
-                    ui->l2_block = ui->l2_block * 2;
-                    if (ui->l2_block > 128) ui->l2_block = 128;
-                    break;
-                }
-                case 9:
-                    ui->l2_policy_idx = (ui->l2_policy_idx + 1) % NUM_POLICIES;
-                    break;
-                case 11: {
-                    ui->trace_access_count = ui->trace_access_count * 2;
-                    if (ui->trace_access_count > 10000) ui->trace_access_count = 10000;
-                    break;
-                }
-                case 12: {
-                    ui->trace_stride = ui->trace_stride * 2;
-                    if (ui->trace_stride > 1024) ui->trace_stride = 1024;
-                    break;
-                }
-            }
+            adjust_field(ui, 1);
             break;
         case '-':
         case KEY_LEFT:
-            switch (ui->selected_field) {
-                case 0: {
-                    ui->l1_sets = ui->l1_sets / 2;
-                    if (ui->l1_sets < 1) ui->l1_sets = 1;
-                    break;
-                }
-                case 1: {
-                    ui->l1_assoc = ui->l1_assoc / 2;
-                    if (ui->l1_assoc < 1) ui->l1_assoc = 1;
-                    break;
-                }
-                case 2: {
-                    ui->l1_block = ui->l1_block / 2;
-                    if (ui->l1_block < 4) ui->l1_block = 4;
-                    break;
-                }
-                case 3:
-                    ui->l1_policy_idx = (ui->l1_policy_idx - 1 + NUM_POLICIES) % NUM_POLICIES;
-                    break;
-                case 4:
-                    ui->write_policy_idx = (ui->write_policy_idx - 1 + NUM_WRITE_POLICIES) % NUM_WRITE_POLICIES;
-                    break;
-                case 5:
-                    ui->enable_l2 = !ui->enable_l2;
-                    break;
-                case 6: {
-                    ui->l2_sets = ui->l2_sets / 2;
-                    if (ui->l2_sets < 1) ui->l2_sets = 1;
-                    break;
-                }
-                case 7: {
-                    ui->l2_assoc = ui->l2_assoc / 2;
-                    if (ui->l2_assoc < 1) ui->l2_assoc = 1;
-                    break;
-                }
-                case 8: {
-                    ui->l2_block = ui->l2_block / 2;
-                    if (ui->l2_block < 4) ui->l2_block = 4;
-                    break;
-                }
-                case 9:
-                    ui->l2_policy_idx = (ui->l2_policy_idx - 1 + NUM_POLICIES) % NUM_POLICIES;
-                    break;
-                case 11: {
-                    ui->trace_access_count = ui->trace_access_count / 2;
-                    if (ui->trace_access_count < 100) ui->trace_access_count = 100;
-                    break;
-                }
-                case 12: {
-                    ui->trace_stride = ui->trace_stride / 2;
-                    if (ui->trace_stride < 4) ui->trace_stride = 4;
-                    break;
-                }
-            }
+            adjust_field(ui, -1);
             break;
         case '\n':
         case '\r':
