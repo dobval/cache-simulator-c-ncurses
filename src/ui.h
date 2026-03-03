@@ -24,6 +24,12 @@ typedef struct {
     int l1_policy_idx;
     int write_policy_idx;
     
+    int l2_sets;
+    int l2_assoc;
+    int l2_block;
+    int l2_policy_idx;
+    int enable_l2;
+    
     TraceType trace_type;
     int trace_access_count;
     int trace_stride;

@@ -8,11 +8,11 @@ static const int NUM_POLICIES = 4;
 static const char *WRITE_POLICY_OPTIONS[] = {"Write-Through", "Write-Back"};
 static const int NUM_WRITE_POLICIES = 2;
 
-#define CONFIG_WIN_H   19
+#define CONFIG_WIN_H   27
 #define CONFIG_WIN_Y   2
 #define CONFIG_WIN_X   2
 
-#define STATS_WIN_H    7
+#define STATS_WIN_H    12
 #define STATS_WIN_Y    (LINES - STATS_WIN_H - 1)
 #define STATS_WIN_X    2
 #define STATS_WIN_W    (COLS - 4)
@@ -56,6 +56,12 @@ void ui_init(UIState *ui) {
     ui->l1_policy_idx = 0;
     ui->write_policy_idx = 0;
     
+    ui->l2_sets = 128;
+    ui->l2_assoc = 8;
+    ui->l2_block = 64;
+    ui->l2_policy_idx = 0;
+    ui->enable_l2 = 0;
+    
     ui->trace_type = TRACE_LOOP;
     ui->trace_access_count = 1000;
     ui->trace_stride = 4;
@@ -88,21 +94,28 @@ static void draw_config_panel(UIState *ui) {
     mvwprintw(win, 5, 2, "L1 Policy:    [%s]", POLICY_OPTIONS[ui->l1_policy_idx]);
     mvwprintw(win, 6, 2, "Write Policy: [%s]", WRITE_POLICY_OPTIONS[ui->write_policy_idx]);
     
-    mvwprintw(win, 8, 2, "Trace Pattern:");
+    mvwprintw(win, 8, 2, "L2 Cache:");
+    mvwprintw(win, 9, 2, "Enable L2:    [%s]", ui->enable_l2 ? "Yes" : "No ");
+    mvwprintw(win, 10, 2, "L2 Sets:      [%3d]", ui->l2_sets);
+    mvwprintw(win, 11, 2, "L2 Assoc:     [%3d]", ui->l2_assoc);
+    mvwprintw(win, 12, 2, "L2 Block:     [%3d] B", ui->l2_block);
+    mvwprintw(win, 13, 2, "L2 Policy:    [%s]", POLICY_OPTIONS[ui->l2_policy_idx]);
+    
+    mvwprintw(win, 15, 2, "Trace Pattern:");
     for (int i = 0; i < TRACE_NUM; i++) {
         if ((TraceType)i == ui->trace_type) {
             wattron(win, A_REVERSE);
-            mvwprintw(win, 9 + i, 4, " %c %s", '1' + i, trace_type_name(i));
+            mvwprintw(win, 16 + i, 4, " %c %s", '1' + i, trace_type_name(i));
             wattroff(win, A_REVERSE);
         } else {
-            mvwprintw(win, 9 + i, 4, " %c %s", '1' + i, trace_type_name(i));
+            mvwprintw(win, 16 + i, 4, " %c %s", '1' + i, trace_type_name(i));
         }
     }
     
-    mvwprintw(win, 15, 2, "Accesses: [%5d]", ui->trace_access_count);
-    mvwprintw(win, 16, 2, "Stride (for Sequential):   [%5d]", ui->trace_stride);
+    mvwprintw(win, 20, 2, "Accesses: [%5d]", ui->trace_access_count);
+    mvwprintw(win, 21, 2, "Stride:   [%5d]", ui->trace_stride);
     
-    mvwprintw(win, 18, 2, "[ENTER] Run  |  +/- to adjust  |  1-3 select trace  |  Q quit");
+    mvwprintw(win, 25, 2, "[ENTER] Run  |  +/- to adjust  |  1-3 select trace  |  Q quit");
     
     if (ui->mode == MODE_CONFIG && ui->selected_field >= 0) {
         int highlight_row = 0;
@@ -112,9 +125,14 @@ static void draw_config_panel(UIState *ui) {
             case 2: highlight_row = 4; break;
             case 3: highlight_row = 5; break;
             case 4: highlight_row = 6; break;
-            case 5: highlight_row = 9 + ui->trace_type; break;
-            case 6: highlight_row = 15; break;
-            case 7: highlight_row = 16; break;
+            case 5: highlight_row = 9; break;
+            case 6: highlight_row = 10; break;
+            case 7: highlight_row = 11; break;
+            case 8: highlight_row = 12; break;
+            case 9: highlight_row = 13; break;
+            case 10: highlight_row = 16 + ui->trace_type; break;
+            case 11: highlight_row = 20; break;
+            case 12: highlight_row = 21; break;
         }
         mvwchgat(win, highlight_row, 2, 25, A_REVERSE, 0, NULL);
     }
@@ -133,27 +151,52 @@ static void draw_stats_panel(UIState *ui, CacheSystem *sys) {
     uint64_t total = stats->hits + stats->misses;
     double hit_rate = total > 0 ? (double)stats->hits / total * 100.0 : 0.0;
     
+    mvwprintw(win, 2, 2, "L1 Cache:");
+    
     wattron(win, COLOR_PAIR(2));
-    mvwprintw(win, 2, 2, "Hits:   %6llu", (unsigned long long)stats->hits);
+    mvwprintw(win, 3, 4, "Hits:   %6llu", (unsigned long long)stats->hits);
     wattroff(win, COLOR_PAIR(2));
     
     wattron(win, COLOR_PAIR(3));
-    mvwprintw(win, 2, 20, "Misses: %6llu", (unsigned long long)stats->misses);
+    mvwprintw(win, 3, 20, "Misses: %6llu", (unsigned long long)stats->misses);
     wattroff(win, COLOR_PAIR(3));
     
     int rate_color = (hit_rate >= 80.0) ? 2 : (hit_rate >= 50.0) ? 4 : 3;
     wattron(win, COLOR_PAIR(rate_color));
-    mvwprintw(win, 2, 40, "Hit Rate: %6.2f%%", hit_rate);
+    mvwprintw(win, 3, 40, "Hit Rate: %6.2f%%", hit_rate);
     wattroff(win, COLOR_PAIR(rate_color));
     
     wattron(win, COLOR_PAIR(4));
-    mvwprintw(win, 3, 2, "Evictions: %4llu", (unsigned long long)stats->evictions);
+    mvwprintw(win, 4, 4, "Evictions: %4llu", (unsigned long long)stats->evictions);
     wattroff(win, COLOR_PAIR(4));
     
-    mvwprintw(win, 3, 20, "Memory Reads: %llu", (unsigned long long)stats->memory_reads);
-    mvwprintw(win, 3, 45, "Writes: %llu", (unsigned long long)stats->memory_writes);
+    mvwprintw(win, 4, 24, "Mem Reads: %llu", (unsigned long long)stats->memory_reads);
+    mvwprintw(win, 4, 46, "Writes: %llu", (unsigned long long)stats->memory_writes);
     
-    mvwprintw(win, 5, 2, "[ENTER] Back to config  |  Q quit");
+    if (sys->enable_l2) {
+        CacheStats *l2_stats = &sys->l2_stats;
+        uint64_t l2_total = l2_stats->hits + l2_stats->misses;
+        double l2_hit_rate = l2_total > 0 ? (double)l2_stats->hits / l2_total * 100.0 : 0.0;
+        
+        mvwprintw(win, 6, 2, "L2 Cache:");
+        
+        wattron(win, COLOR_PAIR(2));
+        mvwprintw(win, 7, 4, "Hits:   %6llu", (unsigned long long)l2_stats->hits);
+        wattroff(win, COLOR_PAIR(2));
+        
+        wattron(win, COLOR_PAIR(3));
+        mvwprintw(win, 7, 20, "Misses: %6llu", (unsigned long long)l2_stats->misses);
+        wattroff(win, COLOR_PAIR(3));
+        
+        rate_color = (l2_hit_rate >= 80.0) ? 2 : (l2_hit_rate >= 50.0) ? 4 : 3;
+        wattron(win, COLOR_PAIR(rate_color));
+        mvwprintw(win, 7, 40, "Hit Rate: %6.2f%%", l2_hit_rate);
+        wattroff(win, COLOR_PAIR(rate_color));
+        
+        mvwprintw(win, 8, 4, "Evictions: %4llu", (unsigned long long)l2_stats->evictions);
+    }
+    
+    mvwprintw(win, 10, 2, "[ENTER] Back to config  |  Q quit");
     
     wnoutrefresh(win);
 }
@@ -188,10 +231,12 @@ void ui_draw(UIState *ui, CacheSystem *sys) {
 static void run_simulation(UIState *ui, CacheSystem *sys) {
     WritePolicy wp = (ui->write_policy_idx == 0) ? WRITE_THROUGH : WRITE_BACK;
     EvictionPolicy l1_policy = (EvictionPolicy)ui->l1_policy_idx;
+    EvictionPolicy l2_policy = (EvictionPolicy)ui->l2_policy_idx;
     
     cache_system_free(sys);
     cache_system_init(sys, ui->l1_sets, ui->l1_assoc, ui->l1_block,
-                      0, 0, 0, l1_policy, l1_policy, wp, false);
+                      ui->l2_sets, ui->l2_assoc, ui->l2_block,
+                      l1_policy, l2_policy, wp, ui->enable_l2);
     
     trace_gen_init(&ui->generator, ui->trace_type, 0x1000, ui->trace_stride, ui->trace_access_count);
     
@@ -228,11 +273,11 @@ void ui_handle_input(UIState *ui, CacheSystem *sys, int ch) {
     switch (ch) {
         case KEY_UP:
             ui->selected_field--;
-            if (ui->selected_field < 0) ui->selected_field = 7;
+            if (ui->selected_field < 0) ui->selected_field = 12;
             break;
         case KEY_DOWN:
             ui->selected_field++;
-            if (ui->selected_field > 7) ui->selected_field = 0;
+            if (ui->selected_field > 12) ui->selected_field = 0;
             break;
         case '+':
         case KEY_RIGHT:
@@ -258,12 +303,33 @@ void ui_handle_input(UIState *ui, CacheSystem *sys, int ch) {
                 case 4:
                     ui->write_policy_idx = (ui->write_policy_idx + 1) % NUM_WRITE_POLICIES;
                     break;
+                case 5:
+                    ui->enable_l2 = !ui->enable_l2;
+                    break;
                 case 6: {
+                    ui->l2_sets = ui->l2_sets * 2;
+                    if (ui->l2_sets > 256) ui->l2_sets = 256;
+                    break;
+                }
+                case 7: {
+                    ui->l2_assoc = ui->l2_assoc * 2;
+                    if (ui->l2_assoc > 16) ui->l2_assoc = 16;
+                    break;
+                }
+                case 8: {
+                    ui->l2_block = ui->l2_block * 2;
+                    if (ui->l2_block > 128) ui->l2_block = 128;
+                    break;
+                }
+                case 9:
+                    ui->l2_policy_idx = (ui->l2_policy_idx + 1) % NUM_POLICIES;
+                    break;
+                case 11: {
                     ui->trace_access_count = ui->trace_access_count * 2;
                     if (ui->trace_access_count > 10000) ui->trace_access_count = 10000;
                     break;
                 }
-                case 7: {
+                case 12: {
                     ui->trace_stride = ui->trace_stride * 2;
                     if (ui->trace_stride > 1024) ui->trace_stride = 1024;
                     break;
@@ -294,12 +360,33 @@ void ui_handle_input(UIState *ui, CacheSystem *sys, int ch) {
                 case 4:
                     ui->write_policy_idx = (ui->write_policy_idx - 1 + NUM_WRITE_POLICIES) % NUM_WRITE_POLICIES;
                     break;
+                case 5:
+                    ui->enable_l2 = !ui->enable_l2;
+                    break;
                 case 6: {
+                    ui->l2_sets = ui->l2_sets / 2;
+                    if (ui->l2_sets < 1) ui->l2_sets = 1;
+                    break;
+                }
+                case 7: {
+                    ui->l2_assoc = ui->l2_assoc / 2;
+                    if (ui->l2_assoc < 1) ui->l2_assoc = 1;
+                    break;
+                }
+                case 8: {
+                    ui->l2_block = ui->l2_block / 2;
+                    if (ui->l2_block < 4) ui->l2_block = 4;
+                    break;
+                }
+                case 9:
+                    ui->l2_policy_idx = (ui->l2_policy_idx - 1 + NUM_POLICIES) % NUM_POLICIES;
+                    break;
+                case 11: {
                     ui->trace_access_count = ui->trace_access_count / 2;
                     if (ui->trace_access_count < 100) ui->trace_access_count = 100;
                     break;
                 }
-                case 7: {
+                case 12: {
                     ui->trace_stride = ui->trace_stride / 2;
                     if (ui->trace_stride < 4) ui->trace_stride = 4;
                     break;
