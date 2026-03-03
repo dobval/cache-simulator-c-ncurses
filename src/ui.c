@@ -86,7 +86,7 @@ static void draw_config_panel(UIState *ui) {
     
     werase(win);
     box(win, 0, 0);
-    mvwprintw(win, 0, w / 2, " CACHE CONFIG ");
+    mvwprintw(win, 0, (w - 14) / 2, " CACHE CONFIG ");
     
     mvwprintw(win, 2, 2, "L1 Sets:      [%3d]", ui->l1_sets);
     mvwprintw(win, 3, 2, "L1 Assoc:     [%3d]", ui->l1_assoc);
@@ -112,10 +112,10 @@ static void draw_config_panel(UIState *ui) {
         }
     }
     
-    mvwprintw(win, 20, 2, "Accesses: [%5d]", ui->trace_access_count);
-    mvwprintw(win, 21, 2, "Stride:   [%5d]", ui->trace_stride);
+    mvwprintw(win, 20, 2, "Accesses:                [%5d]", ui->trace_access_count);
+    mvwprintw(win, 21, 2, "Stride (for Sequential): [%5d]", ui->trace_stride);
     
-    mvwprintw(win, 25, 2, "[ENTER] Run  |  +/- to adjust  |  1-3 select trace  |  Q quit");
+    mvwprintw(win, 25, 2, "[ENTER] Run  |  + - / < > adjust values  |  1-3 select trace  |  Q quit");
     
     if (ui->mode == MODE_CONFIG && ui->selected_field >= 0) {
         int highlight_row = 0;
@@ -145,7 +145,7 @@ static void draw_stats_panel(UIState *ui, CacheSystem *sys) {
     
     werase(win);
     box(win, 0, 0);
-    mvwprintw(win, 0, (STATS_WIN_W - 15) / 2, " STATISTICS ");
+    mvwprintw(win, 0, (STATS_WIN_W - 12) / 2, " STATISTICS ");
     
     CacheStats *stats = &sys->l1_stats;
     uint64_t total = stats->hits + stats->misses;
@@ -207,7 +207,7 @@ static void draw_main_border(UIState *ui) {
     box(win, 0, 0);
     
     wattron(win, A_BOLD | COLOR_PAIR(1));
-    mvwprintw(win, 0, (COLS - 25) / 2, " CACHE SIMULATOR ");
+    mvwprintw(win, 0, (COLS - 17) / 2, " CACHE SIMULATOR ");
     wattroff(win, A_BOLD | COLOR_PAIR(1));
     
     const char *mode_str = (ui->mode == MODE_CONFIG) ? "CONFIG" : "RESULTS";
@@ -219,9 +219,9 @@ static void draw_main_border(UIState *ui) {
 void ui_draw(UIState *ui, CacheSystem *sys) {
     draw_main_border(ui);
     
-    if (ui->mode == MODE_CONFIG) {
-        draw_config_panel(ui);
-    } else {
+    draw_config_panel(ui);
+    
+    if (ui->mode == MODE_RESULTS) {
         draw_stats_panel(ui, sys);
     }
     
