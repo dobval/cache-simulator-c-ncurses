@@ -1,0 +1,15 @@
+# Build output
+cache_sim
+
+# Object files
+*.o
+
+# IDE
+.vscode/
+.idea/
+
+# Editor backups
+*~
+
+# OS
+.DS_Store
