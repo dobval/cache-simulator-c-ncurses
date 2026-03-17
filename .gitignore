@@ -13,3 +13,6 @@ cache_sim
 
 # OS
 .DS_Store
+
+# Images for README
+screenshots/
