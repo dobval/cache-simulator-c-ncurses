@@ -238,7 +238,7 @@ When L2 is enabled:
 - L1 miss triggers L2 lookup
 - L2 hit reduces memory traffic
 - L2 miss triggers memory read
-- Evicted L1 lines can optionally be placed in L2 (not implemented - simplified model)
+- Evicted L1 lines can optionally be placed in L2
 
 ### Write-Back Memory Traffic
 Memory writes occur:
